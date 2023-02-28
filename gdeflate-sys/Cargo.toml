@@ -1,0 +1,35 @@
+[package]
+name = "gdeflate-sys"
+version = "0.1.0"
+edition = "2021"
+
+authors = [ "Lorenz Klaus <beastle9end@outlook.de>", "Marlon Klaus <marlon.klaus@icloud.com>" ]
+description = "A library for compressing and decompressing the GDeflate format"
+homepage = "https://github.com/projectkml/gdeflate-rs"
+repository = "https://github.com/projectkml/gdeflate-rs"
+documentation = "https://docs.rs/gdeflate"
+readme = "README.md"
+keywords = [ "compression", "decompression", "deflate" ]
+categories = [ "api-bindings", "compression", "decompression" ]
+license = "MIT/Apache-2.0"
+build = "build.rs"
+include = [
+    "src/*.rs",
+    "build.rs",
+    "Cargo.toml",
+    "vendor/libdeflate/libdeflate.h",
+    "vendor/libdeflate/common/*",
+    "vendor/libdefalte/lib/*"
+]
+
+[dependencies]
+
+[build-dependencies]
+bindgen = "0.63.0"
+cc = "1.0.78"
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+
+lto = true

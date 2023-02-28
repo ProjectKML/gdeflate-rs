@@ -1,0 +1,3 @@
+[submodule "gdeflate-sys/vendor/libdeflate"]
+	path = gdeflate-sys/vendor/libdeflate
+	url = https://github.com/NVIDIA/libdeflate
