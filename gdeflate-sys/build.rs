@@ -1,5 +1,4 @@
-use std::fs;
-use std::path::Path;
+use std::{fs, path::Path};
 
 fn generate_bindings() {
     let bindings = bindgen::Builder::default()
@@ -20,6 +19,7 @@ fn main() {
 
     build
         .include("vendor/libdeflate/libdeflate.h")
+        .file("vendor/libdeflate/libdeflate.h")
         .file("vendor/libdeflate/lib/gdeflate_compress.c")
         .file("vendor/libdeflate/lib/gdeflate_decompress.c")
         .compile("gdeflate_sys_cc");
