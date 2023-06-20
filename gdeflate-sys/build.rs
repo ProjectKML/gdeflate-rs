@@ -19,9 +19,9 @@ fn main() {
 
     build
         .include("vendor/libdeflate/libdeflate.h")
-        .file("vendor/libdeflate/libdeflate.h")
         .file("vendor/libdeflate/lib/gdeflate_compress.c")
         .file("vendor/libdeflate/lib/gdeflate_decompress.c")
+        .file("vendor/libdeflate/lib/utils.c")
         .compile("gdeflate_sys_cc");
 
     generate_bindings();

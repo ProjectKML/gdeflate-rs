@@ -83,7 +83,7 @@ impl Compressor {
             for page in &pages {
                 unsafe {
                     libc::memcpy(
-                        compressed_data.as_mut_ptr().offset(pos as isize).cast(),
+                        compressed_data.as_mut_ptr().add(pos).cast(),
                         page.data,
                         page.nbytes,
                     );
@@ -145,12 +145,8 @@ impl Decompressor {
         }
 
         match result {
-            libdeflate_result_LIBDEFLATE_SUCCESS => {
-                Ok(decompressed_data)
-            },
-            _ => {
-                Err(Error::DecompressionFailed)
-            }
+            libdeflate_result_LIBDEFLATE_SUCCESS => Ok(decompressed_data),
+            _ => Err(Error::DecompressionFailed),
         }
     }
 }
@@ -168,17 +164,15 @@ mod tests {
 
     #[test]
     fn test() {
-        let data = (0..100000)
-            .into_iter()
-            .map(|e| (e % 255) as u8)
-            .collect::<Vec<_>>();
+        let data = (0..100000).map(|e| (e % 255) as u8).collect::<Vec<_>>();
 
         let mut compressor = Compressor::new(CompressionLevel::Level12).unwrap();
 
         let compressed_data = compressor.compress(&data).unwrap();
 
         let mut decompressor = Decompressor::new().unwrap();
-        let decompressed_data = decompressor.decompress(&compressed_data, data.len())
+        let decompressed_data = decompressor
+            .decompress(&compressed_data, data.len())
             .unwrap();
 
         assert_eq!(data, decompressed_data);
