@@ -18,7 +18,7 @@ fn main() {
     let mut build = cc::Build::new();
 
     build
-        .include("vendor/libdeflate/libdeflate.h")
+        .include("vendor/libdeflate")
         .file("vendor/libdeflate/lib/gdeflate_compress.c")
         .file("vendor/libdeflate/lib/gdeflate_decompress.c")
         .file("vendor/libdeflate/lib/utils.c")

@@ -1,3 +1,5 @@
+use std::ptr;
+
 use gdeflate_sys::*;
 use thiserror::Error;
 
@@ -9,8 +11,12 @@ pub enum Error {
     CompressionFailed,
     #[error("Failed to create decompressor")]
     DecompressorCreationFailed,
-    #[error("Failed to decompress data")]
-    DecompressionFailed,
+    #[error("Bad data")]
+    BadData,
+    #[error("Short output")]
+    ShortOutput,
+    #[error("Insufficient space")]
+    InsufficientSpace,
 }
 
 #[repr(i32)]
@@ -36,9 +42,10 @@ pub struct Compressor {
 }
 
 impl Compressor {
+    #[inline]
     pub fn new(compression_level: CompressionLevel) -> Result<Self, Error> {
         let compressor = unsafe { libdeflate_alloc_gdeflate_compressor(compression_level as _) };
-        if compressor == std::ptr::null_mut() {
+        if compressor.is_null() {
             Err(Error::CompressorCreationFailed)
         } else {
             Ok(Self { compressor })
@@ -46,23 +53,24 @@ impl Compressor {
     }
 
     pub fn compress(&mut self, bytes: &[u8]) -> Result<Vec<u8>, Error> {
-        let mut pages_needed = 0;
-        let upper_bound = unsafe {
-            libdeflate_gdeflate_compress_bound(
-                self.compressor,
-                bytes.len(),
-                &mut pages_needed as *mut _,
-            )
-        };
-        let upper_bound_per_page = upper_bound / pages_needed;
+        let mut num_pages = 0usize;
 
-        let mut pages = vec![libdeflate_gdeflate_out_page {
-            data: std::ptr::null_mut(),
-            nbytes: 0,
-        }];
-        for page in &mut pages {
-            page.data = unsafe { libc::malloc(upper_bound_per_page) };
-        }
+        let buffer_size = unsafe {
+            libdeflate_gdeflate_compress_bound(self.compressor, bytes.len(), &mut num_pages)
+        };
+
+        let mut buffer = vec![0u8; buffer_size];
+        let page_size = buffer_size / num_pages;
+
+        let mut pages = (0..num_pages)
+            .into_iter()
+            .map(|i| {
+                libdeflate_gdeflate_out_page {
+                    data: unsafe { buffer.as_mut_ptr().add(i * page_size) }.cast(),
+                    nbytes: page_size,
+                }
+            })
+            .collect::<Vec<_>>();
 
         let compressed_size = unsafe {
             libdeflate_gdeflate_compress(
@@ -75,26 +83,20 @@ impl Compressor {
         };
 
         if compressed_size == 0 {
-            Err(Error::CompressionFailed)
-        } else {
-            let mut compressed_data = vec![0u8; compressed_size];
-            let mut pos = 0usize;
-
-            for page in &pages {
-                unsafe {
-                    libc::memcpy(
-                        compressed_data.as_mut_ptr().add(pos).cast(),
-                        page.data,
-                        page.nbytes,
-                    );
-                    pos += page.nbytes;
-
-                    libc::free(page.data)
-                };
-            }
-
-            Ok(compressed_data)
+            return Err(Error::CompressionFailed)
         }
+
+        let mut compressed_bytes = vec![0u8; compressed_size];
+        let mut offset = compressed_bytes.as_mut_ptr().cast();
+
+        for page in &pages {
+            unsafe {
+                ptr::copy_nonoverlapping(page.data, offset, page.nbytes);
+                offset = unsafe { offset.add(page.nbytes) };
+            }
+        }
+
+        Ok(buffer)
     }
 }
 
@@ -110,9 +112,10 @@ pub struct Decompressor {
 }
 
 impl Decompressor {
+    #[inline]
     pub fn new() -> Result<Self, Error> {
         let decompressor = unsafe { libdeflate_alloc_gdeflate_decompressor() };
-        if decompressor == std::ptr::null_mut() {
+        if decompressor.is_null() {
             Err(Error::DecompressorCreationFailed)
         } else {
             Ok(Self { decompressor })
@@ -141,12 +144,15 @@ impl Decompressor {
         };
 
         if actual_decompressed != decompressed_size {
-            return Err(Error::DecompressionFailed)
+            return Err(Error::BadData)
         }
 
         match result {
             libdeflate_result_LIBDEFLATE_SUCCESS => Ok(decompressed_data),
-            _ => Err(Error::DecompressionFailed),
+            libdeflate_result_LIBDEFLATE_BAD_DATA => Err(Error::BadData),
+            libdeflate_result_LIBDEFLATE_SHORT_OUTPUT => Err(Error::ShortOutput),
+            libdeflate_result_LIBDEFLATE_INSUFFICIENT_SPACE => Err(Error::InsufficientSpace),
+            _ => unreachable!(),
         }
     }
 }
