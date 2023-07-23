@@ -1,3 +1,4 @@
+use std::mem::MaybeUninit;
 use std::ptr;
 
 use gdeflate_sys::*;
@@ -37,6 +38,8 @@ pub enum CompressionLevel {
     Level12 = 12,
 }
 
+const DEFAULT_TILE_SIZE: usize = 64 * 1024;
+
 pub struct Compressor {
     compressor: *mut libdeflate_gdeflate_compressor,
 }
@@ -53,50 +56,34 @@ impl Compressor {
     }
 
     pub fn compress(&mut self, bytes: &[u8]) -> Result<Vec<u8>, Error> {
-        let mut num_pages = 0usize;
+        let num_items = (bytes.len() + DEFAULT_TILE_SIZE - 1) / DEFAULT_TILE_SIZE;
 
-        let buffer_size = unsafe {
-            libdeflate_gdeflate_compress_bound(self.compressor, bytes.len(), &mut num_pages)
+        let mut page_count = 0;
+
+        let scratch_size = unsafe {
+            libdeflate_gdeflate_compress_bound(ptr::null_mut(), DEFAULT_TILE_SIZE, &mut page_count)
         };
+        assert_eq!(page_count, 1);
 
-        let mut buffer = vec![0u8; buffer_size];
-        let page_size = buffer_size / num_pages;
+        let mut scratch_buffer = vec![0u8; scratch_size];
 
-        let mut pages = (0..num_pages)
-            .into_iter()
-            .map(|i| {
-                libdeflate_gdeflate_out_page {
-                    data: unsafe { buffer.as_mut_ptr().add(i * page_size) }.cast(),
-                    nbytes: page_size,
-                }
-            })
-            .collect::<Vec<_>>();
+        for i in 0..num_items {
+            let tile_offset = i * DEFAULT_TILE_SIZE;
 
-        let compressed_size = unsafe {
-            libdeflate_gdeflate_compress(
-                self.compressor,
-                bytes.as_ptr().cast(),
-                bytes.len(),
-                pages.as_mut_ptr(),
-                pages.len(),
-            )
-        };
+            let mut compressed_page = libdeflate_gdeflate_out_page {
+                data: scratch_buffer.as_mut_ptr(),
+                nbytes: scratch_size
+            };
 
-        if compressed_size == 0 {
-            return Err(Error::CompressionFailed)
-        }
+            let uncompressed_size = 0; //TODO:
 
-        let mut compressed_bytes = vec![0u8; compressed_size];
-        let mut offset = compressed_bytes.as_mut_ptr().cast();
-
-        for page in &pages {
             unsafe {
-                ptr::copy_nonoverlapping(page.data, offset, page.nbytes);
-                offset = unsafe { offset.add(page.nbytes) };
+                libdeflate_gdeflate_compress(self.compressor, bytes.as_ptr().add(tile_offset).cast(),
+                    uncompressed_size, &mut compressed_page, 1);
             }
         }
 
-        Ok(buffer)
+        todo!()
     }
 }
 
