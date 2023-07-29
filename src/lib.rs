@@ -1,11 +1,17 @@
-use std::mem::MaybeUninit;
-use std::ptr;
+mod tile_stream;
+use std::{
+    io,
+    io::{Cursor, Write},
+    ptr,
+};
 
 use gdeflate_sys::*;
 use thiserror::Error;
+pub use tile_stream::*;
 
 #[derive(Debug, Error)]
 pub enum Error {
+    //TODO: make me beautiful
     #[error("Failed to create compressor")]
     CompressorCreationFailed,
     #[error("Failed to compress data")]
@@ -18,6 +24,8 @@ pub enum Error {
     ShortOutput,
     #[error("Insufficient space")]
     InsufficientSpace,
+    #[error("Io error")]
+    IoError(#[from] io::Error),
 }
 
 #[repr(i32)]
@@ -40,8 +48,11 @@ pub enum CompressionLevel {
 
 const DEFAULT_TILE_SIZE: usize = 64 * 1024;
 
-pub struct Compressor {
-    compressor: *mut libdeflate_gdeflate_compressor,
+pub struct Compressor(*mut libdeflate_gdeflate_compressor);
+
+struct Tile {
+    uncompressed_size: usize,
+    bytes: Vec<u8>,
 }
 
 impl Compressor {
@@ -51,52 +62,86 @@ impl Compressor {
         if compressor.is_null() {
             Err(Error::CompressorCreationFailed)
         } else {
-            Ok(Self { compressor })
+            Ok(Self(compressor))
         }
     }
 
     pub fn compress(&mut self, bytes: &[u8]) -> Result<Vec<u8>, Error> {
-        let num_items = (bytes.len() + DEFAULT_TILE_SIZE - 1) / DEFAULT_TILE_SIZE;
+        let num_tiles = (bytes.len() + DEFAULT_TILE_SIZE - 1) / DEFAULT_TILE_SIZE;
 
         let mut page_count = 0;
-
         let scratch_size = unsafe {
             libdeflate_gdeflate_compress_bound(ptr::null_mut(), DEFAULT_TILE_SIZE, &mut page_count)
         };
         assert_eq!(page_count, 1);
 
-        let mut scratch_buffer = vec![0u8; scratch_size];
+        let mut tiles = (0..num_tiles)
+            .into_iter()
+            .map(|_| {
+                Tile {
+                    uncompressed_size: 0,
+                    bytes: vec![0; scratch_size],
+                }
+            })
+            .collect::<Vec<_>>();
 
-        for i in 0..num_items {
+        // Compress all tiles
+        for i in 0..num_tiles {
             let tile_offset = i * DEFAULT_TILE_SIZE;
 
             let mut compressed_page = libdeflate_gdeflate_out_page {
-                data: scratch_buffer.as_mut_ptr(),
-                nbytes: scratch_size
+                data: tiles[i].bytes.as_mut_ptr().cast(),
+                nbytes: scratch_size,
             };
 
-            let uncompressed_size = 0; //TODO:
+            let remaining = bytes.len() - tile_offset;
+            let uncompressed_size = remaining.min(DEFAULT_TILE_SIZE);
 
             unsafe {
-                libdeflate_gdeflate_compress(self.compressor, bytes.as_ptr().add(tile_offset).cast(),
-                    uncompressed_size, &mut compressed_page, 1);
+                libdeflate_gdeflate_compress(
+                    self.0,
+                    bytes.as_ptr().add(tile_offset).cast(),
+                    uncompressed_size,
+                    &mut compressed_page,
+                    1,
+                );
             }
+
+            tiles[i].uncompressed_size = uncompressed_size;
         }
 
-        todo!()
+        // Collect header
+        let mut data_pos = 0;
+        let mut tile_ptrs = tiles
+            .iter()
+            .map(|tile| {
+                data_pos += tile.bytes.len() as u32;
+                data_pos
+            })
+            .collect::<Vec<_>>();
+
+        tile_ptrs[0] = tiles.last().unwrap().bytes.len() as _;
+
+        // Write output stream
+        let mut writer = Cursor::new(Vec::new());
+        writer.write_all(bytemuck::cast_slice(&tile_ptrs))?;
+
+        for tile in &tiles {
+            writer.write_all(&tile.bytes)?;
+        }
+
+        Ok(writer.into_inner())
     }
 }
 
 impl Drop for Compressor {
     #[inline]
     fn drop(&mut self) {
-        unsafe { libdeflate_free_gdeflate_compressor(self.compressor) }
+        unsafe { libdeflate_free_gdeflate_compressor(self.0) }
     }
 }
 
-pub struct Decompressor {
-    decompressor: *mut libdeflate_gdeflate_decompressor,
-}
+pub struct Decompressor(*mut libdeflate_gdeflate_decompressor);
 
 impl Decompressor {
     #[inline]
@@ -105,7 +150,7 @@ impl Decompressor {
         if decompressor.is_null() {
             Err(Error::DecompressorCreationFailed)
         } else {
-            Ok(Self { decompressor })
+            Ok(Self(decompressor))
         }
     }
 
@@ -121,7 +166,7 @@ impl Decompressor {
 
         let result = unsafe {
             libdeflate_gdeflate_decompress(
-                self.decompressor,
+                self.0,
                 &mut page as *mut _,
                 1,
                 decompressed_data.as_mut_ptr().cast(),
@@ -147,7 +192,7 @@ impl Decompressor {
 impl Drop for Decompressor {
     #[inline]
     fn drop(&mut self) {
-        unsafe { libdeflate_free_gdeflate_decompressor(self.decompressor) }
+        unsafe { libdeflate_free_gdeflate_decompressor(self.0) }
     }
 }
 
