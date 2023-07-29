@@ -3,11 +3,9 @@ name = "gdeflate"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-bytemuck = "1.13.1"
-byteorder = "1.4.3"
-gdeflate-sys = { path = "gdeflate-sys"}
-libc = "0.2.140"
-thiserror = "1.0.39"
+cxx = "1.0.102"
+thiserror = "1.0.44"
+
+[build-dependencies]
+cxx-build = "1.0.102"
