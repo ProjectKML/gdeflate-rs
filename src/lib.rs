@@ -1,4 +1,4 @@
-mod tile_stream;
+mod header;
 use std::{
     io,
     io::{Cursor, Write},
@@ -7,25 +7,20 @@ use std::{
 
 use gdeflate_sys::*;
 use thiserror::Error;
-pub use tile_stream::*;
+pub use header::*;
 
 #[derive(Debug, Error)]
 pub enum Error {
-    //TODO: make me beautiful
     #[error("Failed to create compressor")]
     CompressorCreationFailed,
     #[error("Failed to compress data")]
     CompressionFailed,
     #[error("Failed to create decompressor")]
     DecompressorCreationFailed,
-    #[error("Bad data")]
-    BadData,
-    #[error("Short output")]
-    ShortOutput,
-    #[error("Insufficient space")]
-    InsufficientSpace,
-    #[error("Io error")]
-    IoError(#[from] io::Error),
+    #[error("The header is invalid")]
+    InvalidHeader,
+    #[error("Io error: {0}")]
+    IoError(#[from] io::Error)
 }
 
 #[repr(i32)]
@@ -50,6 +45,7 @@ const DEFAULT_TILE_SIZE: usize = 64 * 1024;
 
 pub struct Compressor(*mut libdeflate_gdeflate_compressor);
 
+#[derive(Default)]
 struct Tile {
     uncompressed_size: usize,
     bytes: Vec<u8>,
@@ -75,22 +71,16 @@ impl Compressor {
         };
         assert_eq!(page_count, 1);
 
-        let mut tiles = (0..num_tiles)
-            .into_iter()
-            .map(|_| {
-                Tile {
-                    uncompressed_size: 0,
-                    bytes: vec![0; scratch_size],
-                }
-            })
-            .collect::<Vec<_>>();
+        let mut scratch_buffer = vec![0u8; scratch_size];
+
+        let mut tiles = Vec::with_capacity(scratch_size);
 
         // Compress all tiles
         for i in 0..num_tiles {
             let tile_offset = i * DEFAULT_TILE_SIZE;
 
             let mut compressed_page = libdeflate_gdeflate_out_page {
-                data: tiles[i].bytes.as_mut_ptr().cast(),
+                data: scratch_buffer.as_mut_ptr().cast(),
                 nbytes: scratch_size,
             };
 
@@ -107,7 +97,18 @@ impl Compressor {
                 );
             }
 
-            tiles[i].uncompressed_size = uncompressed_size;
+            tiles.push(Tile {
+                uncompressed_size,
+                bytes: vec![0; compressed_page.nbytes],
+            });
+
+            unsafe {
+                ptr::copy_nonoverlapping(
+                    scratch_buffer.as_ptr(),
+                    tiles[i].bytes.as_mut_ptr(),
+                    compressed_page.nbytes,
+                );
+            }
         }
 
         // Collect header
@@ -123,7 +124,16 @@ impl Compressor {
         tile_ptrs[0] = tiles.last().unwrap().bytes.len() as _;
 
         // Write output stream
+        let mut uncompressed_size = tile_ptrs.len() * DEFAULT_TILE_SIZE;
+        let tail_size = bytes.len() - (tile_ptrs.len() - 1) * DEFAULT_TILE_SIZE;
+        if tail_size < DEFAULT_TILE_SIZE {
+            uncompressed_size -= DEFAULT_TILE_SIZE - tail_size;
+        }
+
+        let header = Header::new(uncompressed_size);
+
         let mut writer = Cursor::new(Vec::new());
+        header.write(&mut writer)?;
         writer.write_all(bytemuck::cast_slice(&tile_ptrs))?;
 
         for tile in &tiles {
@@ -155,37 +165,27 @@ impl Decompressor {
     }
 
     pub fn decompress(&mut self, bytes: &[u8], decompressed_size: usize) -> Result<Vec<u8>, Error> {
-        let mut page = libdeflate_gdeflate_in_page {
-            data: bytes.as_ptr().cast(),
-            nbytes: bytes.len(),
-        };
+        let buffer = vec![0; decompressed_size];
 
-        let mut decompressed_data = vec![0u8; decompressed_size];
+        let mut reader = Cursor::new(bytes);
 
-        let mut actual_decompressed = 0;
-
-        let result = unsafe {
-            libdeflate_gdeflate_decompress(
-                self.0,
-                &mut page as *mut _,
-                1,
-                decompressed_data.as_mut_ptr().cast(),
-                decompressed_size,
-                &mut actual_decompressed as *mut _,
-            )
-        };
-
-        if actual_decompressed != decompressed_size {
-            return Err(Error::BadData)
+        let header = Header::from_reader(&mut reader)?;
+        if !header.valid() {
+            return Err(Error::InvalidHeader)
         }
 
-        match result {
-            libdeflate_result_LIBDEFLATE_SUCCESS => Ok(decompressed_data),
-            libdeflate_result_LIBDEFLATE_BAD_DATA => Err(Error::BadData),
-            libdeflate_result_LIBDEFLATE_SHORT_OUTPUT => Err(Error::ShortOutput),
-            libdeflate_result_LIBDEFLATE_INSUFFICIENT_SPACE => Err(Error::InsufficientSpace),
-            _ => unreachable!(),
+        let num_tiles = header.num_tiles();
+        
+        for i in 0..num_tiles {
+            let _tile_offset = i * DEFAULT_TILE_SIZE;
+            
+            let _page = libdeflate_gdeflate_in_page {
+                data: ptr::null_mut(),
+                nbytes: 0,
+            };
         }
+
+        Ok(buffer)
     }
 }
 

@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 bytemuck = "1.13.1"
+byteorder = "1.4.3"
 gdeflate-sys = { path = "gdeflate-sys"}
 libc = "0.2.140"
 thiserror = "1.0.39"
