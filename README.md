@@ -25,7 +25,7 @@
 
 ```TOML
 [dependencies]
-gdeflate = "0.1.0"
+gdeflate = "0.1.1"
 ```
 
 Use the `compress` and `decompress` functions to compress and decompress data.
