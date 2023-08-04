@@ -69,3 +69,16 @@ pub fn decompress(bytes: &[u8], decompressed_size: usize) -> Result<Vec<u8>, Err
 
     Ok(buffer)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compress() {
+        let bytes = b"Hello, world!";
+        let compressed = compress(bytes, CompressionLevel::Level1).unwrap();
+        let decompressed = decompress(&compressed, bytes.len()).unwrap();
+        assert_eq!(bytes, &decompressed);
+    }
+}
