@@ -6,8 +6,21 @@ mod ffi {
         include!("GDeflate.h");
 
         fn CompressBound(size: usize) -> usize;
-        unsafe fn Compress(output: *mut u8, output_size: *mut usize, in_: *const u8, in_size: usize, level: u32, flags: u32) -> bool;
-        unsafe fn Decompress(output: *mut u8, output_size: usize, in_: *const u8, in_size: usize, num_workers: u32) -> bool;
+        unsafe fn Compress(
+            output: *mut u8,
+            output_size: *mut usize,
+            in_: *const u8,
+            in_size: usize,
+            level: u32,
+            flags: u32,
+        ) -> bool;
+        unsafe fn Decompress(
+            output: *mut u8,
+            output_size: usize,
+            in_: *const u8,
+            in_size: usize,
+            num_workers: u32,
+        ) -> bool;
     }
 }
 
@@ -34,7 +47,7 @@ pub enum Error {
     #[error("Compression failed")]
     CompressionFailed,
     #[error("Decompression failed")]
-    DecompressionFailed
+    DecompressionFailed,
 }
 
 const COMPRESS_SINGLE_THREAD: u32 = 0x200;
@@ -45,12 +58,19 @@ pub fn compress(bytes: &[u8], level: CompressionLevel) -> Result<Vec<u8>, Error>
     let mut buffer = vec![0; size];
 
     let result = unsafe {
-        ffi::Compress(buffer.as_mut_ptr(), &mut size, bytes.as_ptr(), bytes.len(), level as _, COMPRESS_SINGLE_THREAD)
+        ffi::Compress(
+            buffer.as_mut_ptr(),
+            &mut size,
+            bytes.as_ptr(),
+            bytes.len(),
+            level as _,
+            COMPRESS_SINGLE_THREAD,
+        )
     };
     buffer.resize(size, 0);
 
     if !result {
-        return Err(Error::CompressionFailed);
+        return Err(Error::CompressionFailed)
     }
 
     Ok(buffer)
@@ -60,11 +80,17 @@ pub fn decompress(bytes: &[u8], decompressed_size: usize) -> Result<Vec<u8>, Err
     let mut buffer = vec![0; decompressed_size];
 
     let result = unsafe {
-        ffi::Decompress(buffer.as_mut_ptr(), decompressed_size, bytes.as_ptr(), bytes.len(), 1)
+        ffi::Decompress(
+            buffer.as_mut_ptr(),
+            decompressed_size,
+            bytes.as_ptr(),
+            bytes.len(),
+            1,
+        )
     };
 
     if !result {
-        return Err(Error::DecompressionFailed);
+        return Err(Error::DecompressionFailed)
     }
 
     Ok(buffer)
