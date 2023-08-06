@@ -1,6 +1,6 @@
 [package]
 name = "gdeflate"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 
 authors = [ "Lorenz Klaus <beastle9end@outlook.de>", "Marlon Klaus <marlon.klaus@icloud.com>" ]
@@ -22,7 +22,7 @@ include = [
 ]
 
 [dependencies]
-cxx = "1.0.102"
+cxx = "1.0.103"
 thiserror = "1.0.44"
 
 [build-dependencies]
