@@ -22,8 +22,8 @@ include = [
 ]
 
 [dependencies]
-cxx = "1.0.103"
+cxx = "1.0.104"
 thiserror = "1.0.44"
 
 [build-dependencies]
-cxx-build = "1.0.102"
+cxx-build = "1.0.104"
