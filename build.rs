@@ -1,3 +1,5 @@
+use std::env;
+
 fn main() {
     cc::Build::new()
         .include("vendor/libdeflate")
@@ -6,7 +8,15 @@ fn main() {
         .file("vendor/libdeflate/lib/utils.c")
         .compile("gdeflate_c");
 
-    cxx_build::bridge("src/lib.rs")
+    let target = env::var("TARGET").unwrap();
+
+    let mut build = cxx_build::bridge("src/lib.rs");
+
+    if target.contains("gnu") || target.contains("darwin") {
+        build.flag("-std=c++20");
+    }
+
+    build
         .include("src")
         .include("vendor/libdeflate")
         .file("src/GDeflateCompress.cpp")
