@@ -1,27 +1,19 @@
+mod tests;
+
+pub mod sys {
+    pub use gdeflate_sys::*;
+}
+
+use std::slice;
+
 use thiserror::Error;
 
-#[cxx::bridge(namespace = "GDeflate")]
-mod ffi {
-    unsafe extern "C++" {
-        include!("GDeflate.h");
-
-        fn CompressBound(size: usize) -> usize;
-        unsafe fn Compress(
-            output: *mut u8,
-            output_size: *mut usize,
-            in_: *const u8,
-            in_size: usize,
-            level: u32,
-            flags: u32,
-        ) -> bool;
-        unsafe fn Decompress(
-            output: *mut u8,
-            output_size: usize,
-            in_: *const u8,
-            in_size: usize,
-            num_workers: u32,
-        ) -> bool;
-    }
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("Failed to create compressor")]
+    CompressorCreationFailed,
+    #[error("Failed to create decompressor")]
+    DecompressorCreationFailed,
 }
 
 #[repr(i32)]
@@ -42,69 +34,107 @@ pub enum CompressionLevel {
     Level12 = 12,
 }
 
-#[derive(Error, Debug)]
-pub enum Error {
-    #[error("Compression failed")]
-    CompressionFailed,
-    #[error("Decompression failed")]
-    DecompressionFailed,
+#[derive(Copy, Clone, Debug)]
+pub struct Tile {
+    pub compressed_size: u32,
+    pub uncompressed_size: u32,
 }
 
-const COMPRESS_SINGLE_THREAD: u32 = 0x200;
+#[derive(Clone, Debug)]
+pub struct CompressionResult {
+    pub bytes: Vec<u8>,
+    pub tiles: Vec<Tile>,
+    pub tile_size: usize,
+}
 
-pub fn compress(bytes: &[u8], level: CompressionLevel) -> Result<Vec<u8>, Error> {
-    let mut size = ffi::CompressBound(bytes.len());
+pub struct Compressor(*mut sys::libdeflate_gdeflate_compressor);
 
-    let mut buffer = vec![0; size];
-
-    let result = unsafe {
-        ffi::Compress(
-            buffer.as_mut_ptr(),
-            &mut size,
-            bytes.as_ptr(),
-            bytes.len(),
-            level as _,
-            COMPRESS_SINGLE_THREAD,
-        )
-    };
-    buffer.resize(size, 0);
-
-    if !result {
-        return Err(Error::CompressionFailed)
+impl Compressor {
+    pub fn new(compression_level: CompressionLevel) -> Result<Self, Error> {
+        let compressor =
+            unsafe { sys::libdeflate_alloc_gdeflate_compressor(compression_level as _) };
+        if compressor.is_null() {
+            Err(Error::CompressorCreationFailed)
+        } else {
+            Ok(Self(compressor))
+        }
     }
 
-    Ok(buffer)
+    pub fn compress(&mut self, bytes: &[u8], tile_size: usize) -> Result<CompressionResult, Error> {
+        let num_tiles = (bytes.len() + tile_size - 1) / tile_size;
+
+        let mut num_pages = 0;
+        let scratch_size =
+            unsafe { sys::libdeflate_gdeflate_compress_bound(self.0, tile_size, &mut num_pages) };
+        assert_eq!(num_pages, 1);
+
+        let mut scratch_buffer = vec![0u8; scratch_size];
+
+        let mut bytes = vec![];
+        let mut tiles = Vec::with_capacity(num_tiles);
+
+        for i in 0..num_tiles {
+            let tile_offset = i * tile_size;
+
+            let mut compressed_page = sys::libdeflate_gdeflate_out_page {
+                data: scratch_buffer.as_mut_ptr().cast(),
+                nbytes: scratch_size,
+            };
+
+            let remaining = bytes.len() - tile_offset;
+            let uncompressed_size = remaining.min(tile_size);
+
+            unsafe {
+                sys::libdeflate_gdeflate_compress(
+                    self.0,
+                    bytes.as_ptr().add(tile_offset).cast(),
+                    uncompressed_size,
+                    &mut compressed_page,
+                    1,
+                );
+
+                bytes.extend_from_slice(unsafe {
+                    slice::from_raw_parts(compressed_page.data.cast(), compressed_page.nbytes)
+                });
+
+                tiles.push(Tile {
+                    compressed_size: compressed_page.nbytes as _,
+                    uncompressed_size: uncompressed_size as _,
+                })
+            }
+        }
+
+        Ok(CompressionResult {
+            bytes,
+            tiles,
+            tile_size,
+        })
+    }
 }
 
-pub fn decompress(bytes: &[u8], decompressed_size: usize) -> Result<Vec<u8>, Error> {
-    let mut buffer = vec![0; decompressed_size];
+impl Drop for Compressor {
+    fn drop(&mut self) {
+        unsafe { sys::libdeflate_free_gdeflate_compressor(self.0) }
+    }
+}
 
-    let result = unsafe {
-        ffi::Decompress(
-            buffer.as_mut_ptr(),
-            decompressed_size,
-            bytes.as_ptr(),
-            bytes.len(),
-            1,
-        )
-    };
+pub struct Decompressor(*mut sys::libdeflate_gdeflate_decompressor);
 
-    if !result {
-        return Err(Error::DecompressionFailed)
+impl Decompressor {
+    pub fn new() -> Result<Self, Error> {
+        let decompressor = unsafe { sys::libdeflate_alloc_gdeflate_decompressor() };
+        if decompressor.is_null() {
+            Err(Error::DecompressorCreationFailed)
+        } else {
+            Ok(Self(decompressor))
+        }
     }
 
-    Ok(buffer)
+    pub fn decompress(&mut self, result: &CompressionResult) -> Result<Vec<u8>, Error> {}
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_compress() {
-        let bytes = b"Hello, world!";
-        let compressed = compress(bytes, CompressionLevel::Level1).unwrap();
-        let decompressed = decompress(&compressed, bytes.len()).unwrap();
-        assert_eq!(bytes, &decompressed);
+impl Drop for Decompressor {
+    fn drop(&mut self) {
+        unsafe { sys::libdeflate_free_gdeflate_decompressor(self.0) }
     }
 }

@@ -1,5 +1,5 @@
 [package]
-name = "gdeflate"
+name = "gdeflate-sys"
 version = "0.3.0"
 edition = "2021"
 
@@ -9,18 +9,27 @@ homepage = "https://github.com/projectkml/gdeflate-rs"
 repository = "https://github.com/projectkml/gdeflate-rs"
 documentation = "https://docs.rs/gdeflate"
 readme = "README.md"
-keywords = ["deflate", "gdeflate", "zlib"]
-categories = ["compression"]
+keywords = [ "compression", "decompression", "deflate" ]
+categories = [ "api-bindings", "compression", "decompression" ]
 license = "MIT/Apache-2.0"
+build = "build.rs"
 include = [
-    "src/*.cpp",
-    "src/*.h",
     "src/*.rs",
-    "vendor/*",
+    "build.rs",
     "Cargo.toml",
-    "build.rs"
+    "vendor/libdeflate/libdeflate.h",
+    "vendor/libdeflate/common/*",
+    "vendor/libdefalte/lib/*"
 ]
 
 [dependencies]
-gdeflate-sys = { path = "gdeflate-sys"}
-thiserror = "1.0.57"
+
+[build-dependencies]
+bindgen = "0.69.4"
+cc = "1.0.90"
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+
+lto = true
