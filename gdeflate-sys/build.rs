@@ -1,9 +1,11 @@
 use std::fs;
 
+use bindgen::Formatter;
+
 fn generate_bindings() {
     let bindings = bindgen::Builder::default()
         .header("vendor/libdeflate/libdeflate.h")
-        .rustfmt_bindings(true)
+        .formatter(Formatter::Rustfmt)
         .size_t_is_usize(true)
         .allowlist_function("libdeflate_.*")
         .layout_tests(false)

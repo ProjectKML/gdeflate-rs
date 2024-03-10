@@ -4,7 +4,7 @@ pub mod sys {
     pub use gdeflate_sys::*;
 }
 
-use std::slice;
+use std::{ptr, slice};
 
 use thiserror::Error;
 
@@ -36,8 +36,8 @@ pub enum CompressionLevel {
 
 #[derive(Copy, Clone, Debug)]
 pub struct Tile {
-    pub compressed_size: u32,
-    pub uncompressed_size: u32,
+    pub compressed_size: usize,
+    pub uncompressed_size: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -102,8 +102,8 @@ impl Compressor {
                 });
 
                 tiles.push(Tile {
-                    compressed_size: compressed_page.nbytes as _,
-                    uncompressed_size: uncompressed_size as _,
+                    compressed_size: compressed_page.nbytes,
+                    uncompressed_size,
                 })
             }
         }
@@ -135,7 +135,35 @@ impl Decompressor {
     }
 
     pub fn decompress(&mut self, result: &CompressionResult) -> Result<Vec<u8>, Error> {
-        Ok(Vec::new())
+        let uncompressed_size = result.tiles.iter().map(|tile| tile.uncompressed_size).sum();
+
+        let mut bytes = vec![0u8; uncompressed_size];
+
+        let mut compressed_offset = 0;
+        let mut uncompressed_offset = 0;
+
+        for tile in &result.tiles {
+            let mut compressed_page = sys::libdeflate_gdeflate_in_page {
+                data: unsafe { result.bytes.as_ptr().add(compressed_offset) }.cast(),
+                nbytes: tile.compressed_size,
+            };
+
+            unsafe {
+                sys::libdeflate_gdeflate_decompress(
+                    self.0,
+                    &mut compressed_page,
+                    1,
+                    bytes.as_mut_ptr().add(uncompressed_offset).cast(),
+                    tile.uncompressed_size,
+                    ptr::null_mut(),
+                );
+            }
+
+            compressed_offset += tile.compressed_size;
+            uncompressed_offset += tile.uncompressed_size;
+        }
+
+        Ok(bytes)
     }
 }
 
