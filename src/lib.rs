@@ -130,7 +130,9 @@ impl Decompressor {
         }
     }
 
-    pub fn decompress(&mut self, result: &CompressionResult) -> Result<Vec<u8>, Error> {}
+    pub fn decompress(&mut self, result: &CompressionResult) -> Result<Vec<u8>, Error> {
+        Ok(Vec::new())
+    }
 }
 
 impl Drop for Decompressor {
