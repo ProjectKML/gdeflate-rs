@@ -60,8 +60,12 @@ impl Compressor {
         }
     }
 
-    pub fn compress(&mut self, bytes: &[u8], tile_size: usize) -> Result<CompressionResult, Error> {
-        let num_tiles = (bytes.len() + tile_size - 1) / tile_size;
+    pub fn compress(
+        &mut self,
+        compressed_bytes: &[u8],
+        tile_size: usize,
+    ) -> Result<CompressionResult, Error> {
+        let num_tiles = (compressed_bytes.len() + tile_size - 1) / tile_size;
 
         let mut num_pages = 0;
         let scratch_size =
@@ -81,13 +85,13 @@ impl Compressor {
                 nbytes: scratch_size,
             };
 
-            let remaining = bytes.len() - tile_offset;
+            let remaining = compressed_bytes.len() - tile_offset;
             let uncompressed_size = remaining.min(tile_size);
 
             unsafe {
                 sys::libdeflate_gdeflate_compress(
                     self.0,
-                    bytes.as_ptr().add(tile_offset).cast(),
+                    compressed_bytes.as_ptr().add(tile_offset).cast(),
                     uncompressed_size,
                     &mut compressed_page,
                     1,
