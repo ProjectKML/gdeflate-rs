@@ -1,3 +1,4 @@
+#[cfg(test)]
 mod tests;
 
 pub mod sys {
@@ -97,9 +98,10 @@ impl Compressor {
                     1,
                 );
 
-                bytes.extend_from_slice(unsafe {
-                    slice::from_raw_parts(compressed_page.data.cast(), compressed_page.nbytes)
-                });
+                bytes.extend_from_slice(slice::from_raw_parts(
+                    compressed_page.data.cast(),
+                    compressed_page.nbytes,
+                ));
 
                 tiles.push(Tile {
                     compressed_size: compressed_page.nbytes,

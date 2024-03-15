@@ -13,8 +13,6 @@ keywords = ["deflate", "gdeflate", "zlib"]
 categories = ["compression"]
 license = "MIT/Apache-2.0"
 include = [
-    "src/*.cpp",
-    "src/*.h",
     "src/*.rs",
     "vendor/*",
     "Cargo.toml",

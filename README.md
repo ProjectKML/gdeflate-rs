@@ -25,19 +25,23 @@
 
 ```TOML
 [dependencies]
-gdeflate = "0.1.1"
+gdeflate = "0.3.0"
 ```
 
 Use the `compress` and `decompress` functions to compress and decompress data.
 
 ```Rust
-use gdeflate::CompressionLevel;
+use gdeflate::{CompressionLevel, Compressor, Decompressor};
 
-...
+let uncompressed_data = vec![0, 1, 2]; // your input data
 
-let bytes = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-let compressed_bytes = gdeflate::compress(&bytes, CompressionLevel::Level12).unwrap();
-assert_eq!(bytes, &gdeflate::decompress(&compressed_bytes, bytes.len()));
+let mut compressor = Compressor::new(CompressionLevel::Level12).unwrap();
+let result = compressor.compress(&uncompressed_data, 65536).unwrap();
+
+let mut decompressor = Decompressor::new().unwrap();
+let reconstructed_data = decompressor.decompress(&result).unwrap();
+
+assert_eq!(&uncompressed_data, &reconstructed_data);
 ```
 
 ## 🚨 Warning 🚨
