@@ -19,7 +19,7 @@ include = [
     "Cargo.toml",
     "vendor/libdeflate/libdeflate.h",
     "vendor/libdeflate/common/*",
-    "vendor/libdefalte/lib/*"
+    "vendor/libdeflate/lib/*",
 ]
 
 [dependencies]

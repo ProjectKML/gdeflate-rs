@@ -20,5 +20,5 @@ include = [
 ]
 
 [dependencies]
-gdeflate-sys = { path = "gdeflate-sys"}
+gdeflate-sys = "0.3.0"
 thiserror = "1.0.57"
