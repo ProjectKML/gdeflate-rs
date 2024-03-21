@@ -36,16 +36,17 @@ pub enum CompressionLevel {
 }
 
 #[derive(Copy, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Tile {
-    pub compressed_size: usize,
-    pub uncompressed_size: usize,
+    pub compressed_size: u32,
+    pub uncompressed_size: u32,
 }
 
 #[derive(Clone, Debug)]
 pub struct CompressionResult {
     pub bytes: Vec<u8>,
     pub tiles: Vec<Tile>,
-    pub tile_size: usize,
+    pub tile_size: u32,
 }
 
 pub struct Compressor(*mut sys::libdeflate_gdeflate_compressor);
@@ -104,8 +105,8 @@ impl Compressor {
                 ));
 
                 tiles.push(Tile {
-                    compressed_size: compressed_page.nbytes,
-                    uncompressed_size,
+                    compressed_size: compressed_page.nbytes as _,
+                    uncompressed_size: uncompressed_size as _,
                 })
             }
         }
@@ -113,7 +114,7 @@ impl Compressor {
         Ok(CompressionResult {
             bytes,
             tiles,
-            tile_size,
+            tile_size: tile_size as _,
         })
     }
 }
@@ -137,7 +138,11 @@ impl Decompressor {
     }
 
     pub fn decompress(&mut self, result: &CompressionResult) -> Result<Vec<u8>, Error> {
-        let uncompressed_size = result.tiles.iter().map(|tile| tile.uncompressed_size).sum();
+        let uncompressed_size = result
+            .tiles
+            .iter()
+            .map(|tile| tile.uncompressed_size)
+            .sum::<u32>() as _;
 
         let mut bytes = vec![0u8; uncompressed_size];
 
@@ -147,7 +152,7 @@ impl Decompressor {
         for tile in &result.tiles {
             let mut compressed_page = sys::libdeflate_gdeflate_in_page {
                 data: unsafe { result.bytes.as_ptr().add(compressed_offset) }.cast(),
-                nbytes: tile.compressed_size,
+                nbytes: tile.compressed_size as _,
             };
 
             unsafe {
@@ -156,13 +161,13 @@ impl Decompressor {
                     &mut compressed_page,
                     1,
                     bytes.as_mut_ptr().add(uncompressed_offset).cast(),
-                    tile.uncompressed_size,
+                    tile.uncompressed_size as _,
                     ptr::null_mut(),
                 );
             }
 
-            compressed_offset += tile.compressed_size;
-            uncompressed_offset += tile.uncompressed_size;
+            compressed_offset += tile.compressed_size as usize;
+            uncompressed_offset += tile.uncompressed_size as usize;
         }
 
         Ok(bytes)
