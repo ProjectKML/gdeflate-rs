@@ -67,12 +67,12 @@ impl<'a> CompressionResult<'a> {
     }
 }
 
-impl<'a> Into<CompressionResult<'a>> for &'a OwnedCompressionResult {
-    fn into(self) -> CompressionResult<'a> {
-        CompressionResult {
-            bytes: &self.bytes,
-            tiles: &self.tiles,
-            tile_size: self.tile_size,
+impl<'a> From<&'a OwnedCompressionResult> for CompressionResult<'a> {
+    fn from(result: &'a OwnedCompressionResult) -> Self {
+        Self {
+            bytes: &result.bytes,
+            tiles: &result.tiles,
+            tile_size: result.tile_size,
         }
     }
 }
