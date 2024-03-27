@@ -43,10 +43,38 @@ pub struct Tile {
 }
 
 #[derive(Clone, Debug)]
-pub struct CompressionResult {
+pub struct OwnedCompressionResult {
     pub bytes: Vec<u8>,
     pub tiles: Vec<Tile>,
     pub tile_size: u32,
+}
+
+#[derive(Clone, Debug)]
+pub struct CompressionResult<'a> {
+    pub bytes: &'a [u8],
+    pub tiles: &'a [Tile],
+    pub tile_size: u32,
+}
+
+impl<'a> CompressionResult<'a> {
+    #[inline]
+    pub fn new(bytes: &'a [u8], tiles: &'a [Tile], tile_size: u32) -> Self {
+        Self {
+            bytes,
+            tiles,
+            tile_size,
+        }
+    }
+}
+
+impl<'a> Into<CompressionResult<'a>> for &'a OwnedCompressionResult {
+    fn into(self) -> CompressionResult<'a> {
+        CompressionResult {
+            bytes: &self.bytes,
+            tiles: &self.tiles,
+            tile_size: self.tile_size,
+        }
+    }
 }
 
 pub struct Compressor(*mut sys::libdeflate_gdeflate_compressor);
@@ -66,7 +94,7 @@ impl Compressor {
         &mut self,
         uncompressed_bytes: &[u8],
         tile_size: usize,
-    ) -> Result<CompressionResult, Error> {
+    ) -> Result<OwnedCompressionResult, Error> {
         let num_tiles = (uncompressed_bytes.len() + tile_size - 1) / tile_size;
 
         let mut num_pages = 0;
@@ -111,7 +139,7 @@ impl Compressor {
             }
         }
 
-        Ok(CompressionResult {
+        Ok(OwnedCompressionResult {
             bytes,
             tiles,
             tile_size: tile_size as _,
@@ -137,7 +165,12 @@ impl Decompressor {
         }
     }
 
-    pub fn decompress(&mut self, result: &CompressionResult) -> Result<Vec<u8>, Error> {
+    pub fn decompress<'a>(
+        &mut self,
+        result: impl Into<CompressionResult<'a>>,
+    ) -> Result<Vec<u8>, Error> {
+        let result = result.into();
+
         let uncompressed_size = result
             .tiles
             .iter()
@@ -149,7 +182,7 @@ impl Decompressor {
         let mut compressed_offset = 0;
         let mut uncompressed_offset = 0;
 
-        for tile in &result.tiles {
+        for tile in result.tiles {
             let mut compressed_page = sys::libdeflate_gdeflate_in_page {
                 data: unsafe { result.bytes.as_ptr().add(compressed_offset) }.cast(),
                 nbytes: tile.compressed_size as _,
