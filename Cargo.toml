@@ -20,7 +20,7 @@ include = [
 ]
 
 [dependencies]
-gdeflate-sys = "0.3.0"
+gdeflate-sys = { path = "gdeflate-sys" }
 serde = { version = "1.0", optional = true, default-features = false }
 thiserror = "1.0.57"
 
