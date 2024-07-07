@@ -25,8 +25,12 @@ include = [
 [dependencies]
 
 [build-dependencies]
-bindgen = "0.69.4"
+bindgen = { version = "0.69.4", optional = true }
 cc = "1.0.90"
+
+[features]
+default = []
+generate_bindings = ["bindgen"]
 
 [profile.release]
 opt-level = 3

@@ -1,9 +1,9 @@
-use std::fs;
+#[cfg(feature = "generate_bindings")]
+use bindgen::{Builder, Formatter};
 
-use bindgen::Formatter;
-
+#[cfg(feature = "generate_bindings")]
 fn generate_bindings() {
-    let bindings = bindgen::Builder::default()
+    let bindings = Builder::default()
         .header("vendor/libdeflate/libdeflate.h")
         .formatter(Formatter::Rustfmt)
         .size_t_is_usize(true)
@@ -12,7 +12,7 @@ fn generate_bindings() {
         .generate()
         .expect("Failed to generate bindings");
 
-    fs::create_dir_all("gen").unwrap();
+    std::fs::create_dir_all("gen").unwrap();
     bindings.write_to_file("gen/bindings.rs").unwrap();
 }
 
@@ -34,5 +34,6 @@ fn main() {
 
     build.compile("gdeflate_sys_cc");
 
+    #[cfg(feature = "generate_bindings")]
     generate_bindings();
 }
