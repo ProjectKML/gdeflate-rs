@@ -15,6 +15,7 @@ license = "MIT/Apache-2.0"
 build = "build.rs"
 include = [
     "src/*.rs",
+    "gen/bindings.rs",
     "build.rs",
     "Cargo.toml",
     "vendor/libdeflate/libdeflate.h",
