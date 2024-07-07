@@ -25,7 +25,6 @@ fn main() {
         .file("vendor/libdeflate/lib/gdeflate_decompress.c")
         .file("vendor/libdeflate/lib/utils.c");
 
-
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     build.file("vendor/libdeflate/lib/x86/cpu_features.c");
 
